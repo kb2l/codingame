@@ -38,7 +38,7 @@ struct Game {
     players_health: [i32; 2],
     players_mana: [i32; 2],
     targets_map: HashMap<i32, Vec<Entity>>,
-    witcher_target: (i32, i32),
+    witcher_reached_pos: bool,
 }
 
 struct Utils {}
@@ -57,7 +57,7 @@ impl Game {
             players_health: [0, 0],
             players_mana: [0, 0],
             targets_map: HashMap::new(),
-            witcher_target: (-1, -1),
+            witcher_reached_pos: false,
         }
     }
     pub fn split(&self) -> [Vec<Entity>; 3] {
@@ -172,7 +172,6 @@ impl Game {
 
     pub fn MoveWitcher(&mut self, hero: &Entity,monsters: &Vec<Entity>, enemies: &Vec<Entity>, ret: &mut Vec<String>) {
         let (mut option1_point, mut option2_point) = ((-1, -1), (-1, -1));
-        
         match self.init_params.base_x {
             0 => {
                 option1_point = (14600, 6000);
@@ -183,10 +182,17 @@ impl Game {
                 option2_point = (8800, 4300);
             }
         }
+        let d = Utils::distance((hero.x, hero.y), option1_point);
+        if d < 5000. {
+            self.witcher_reached_pos = true;
+        }
+        else {
+            self.witcher_reached_pos = false;
+        }
         let mut done = false;
         for ele in monsters {
             let d = Utils::distance((hero.x, hero.y), (ele.x, ele.y));
-            if d < 1280.0 && self.players_mana[0] >= 10 {
+            if d < 1280.0 && self.players_mana[0] >= 50 {
                 match self.init_params.base_x {
                     0 => ret.push(format!("SPELL WIND {} {}", 17630, 9000)),
                     _ => ret.push(format!("SPELL WIND {} {}", 0, 0)),
@@ -196,22 +202,32 @@ impl Game {
             }
         }
 
-        if done == false{
-            if self.witcher_target.0 == -1 {
-                self.witcher_target = option2_point;
-            }
-            let d1 = Utils::distance((hero.x, hero.y), option1_point);
-            let d2 = Utils::distance((hero.x, hero.y), option2_point);
-            if d1 < 100. {
-                ret.push(format!("MOVE {} {}", option2_point.0, option2_point.1));
-                self.witcher_target = option2_point;
-            }
-            else if d2 < 100.{
-                ret.push(format!("MOVE {} {}", option1_point.0, option1_point.1));
-                self.witcher_target = option1_point;
-            }
-            else{
-                ret.push(format!("MOVE {} {}", self.witcher_target.0, self.witcher_target.1));
+        if done == false {
+            match self.witcher_reached_pos {
+                true => {
+                    let mut min = std::f64::MAX;
+                    let mut e = (-1, -1);
+                    eprintln!("monsters size {}", monsters.len());                        
+                    for m in monsters {
+                        let d = Utils::distance((hero.x, hero.y), (m.x, m.y));
+                        eprintln!("distance to monster {} {}", m.id, d);                        
+                        if min > d {
+                            min = d;
+                            e = (m.x, m.y);
+                        }
+                    }
+                    if e.0 != -1{
+                        eprintln!("Found a monster !!!");                        
+                        ret.push(format!("MOVE {} {}", e.0, e.1));
+                    }
+                    else{
+                        eprintln!("couldn't find any mosnter !!!!!!!!!!!!!!");
+                        ret.push(format!("MOVE {} {}", option1_point.0, option1_point.1));    
+                    }
+                },
+                false => {
+                    ret.push(format!("MOVE {} {}", option1_point.0, option1_point.1));
+                },
             }
         }
     }
