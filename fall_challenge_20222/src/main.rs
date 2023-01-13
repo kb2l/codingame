@@ -38,6 +38,7 @@ struct Game {
     players_health: [i32; 2],
     players_mana: [i32; 2],
     targets_map: HashMap<i32, Vec<Entity>>,
+    witcher_target: (i32, i32),
 }
 
 struct Utils {}
@@ -56,6 +57,7 @@ impl Game {
             players_health: [0, 0],
             players_mana: [0, 0],
             targets_map: HashMap::new(),
+            witcher_target: (-1, -1),
         }
     }
     pub fn split(&self) -> [Vec<Entity>; 3] {
@@ -77,15 +79,41 @@ impl Game {
         Utils::distance((entity1.x, entity1.y), (entity2.x, entity2.y))
     }
 
-    pub fn GetDistance(&self, entity: &Entity, other: &Vec<Entity>) -> Vec<(f64, Entity)> {
+    pub fn GetDistanceToMonsters(
+        &self,
+        entity: &Entity,
+        other: &Vec<Entity>,
+    ) -> Vec<(f64, Entity)> {
         let mut ret = Vec::new();
-        other.iter().for_each(|o| {
-            if o.near_base == 1 {
-                let distance = Utils::distance((entity.x, entity.y), (o.x, o.y));
-                ret.push((distance, *o));
+
+        other.iter().for_each(|monster| {
+            let dist_to_base = Utils::distance(
+                (self.init_params.base_x, self.init_params.base_y),
+                (monster.x, monster.y),
+            );
+            if monster.near_base == 1 && dist_to_base < 5000. {
+                let distance = Utils::distance((entity.x, entity.y), (monster.x, monster.y));
+                ret.push((distance, *monster));
             }
         });
-        ret.sort_by(|a, b| { a.0.partial_cmp(&b.0).unwrap() });
+        ret.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        ret
+    }
+
+    pub fn GetDistanceToEnemies(&self, entity: &Entity, other: &Vec<Entity>) -> Vec<(f64, Entity)> {
+        let mut ret = Vec::new();
+
+        other.iter().for_each(|enemy| {
+            let dist_to_base = Utils::distance(
+                (self.init_params.base_x, self.init_params.base_y),
+                (enemy.x, enemy.y),
+            );
+            if dist_to_base < 5000. {
+                let distance = Utils::distance((entity.x, entity.y), (enemy.x, enemy.y));
+                ret.push((distance, *enemy));
+            }
+        });
+        ret.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         ret
     }
 
@@ -94,51 +122,208 @@ impl Game {
     // }
 
     pub fn UpdateTargets(&mut self, myheres: &Vec<Entity>, monsters: &Vec<Entity>) {
-
-        myheres.iter().for_each(|hero| {
-            if self.targets_map.contains_key(&hero.id) {
-                    
-                    let target = self.targets_map.get(&hero.id).unwrap();
-
-                    match monsters.iter().find(|monster| {
-                        let mut ret = false;
-                        for ele in target {
-                            if ele.id == monster.id {
-                                ret = true;
-                                break;
+        myheres.iter().enumerate().for_each(|(i, hero)| {
+            match i {
+                0 => {},
+                _ => {
+                    if self.targets_map.contains_key(&hero.id) {
+                        let target = self.targets_map.get(&hero.id).unwrap();
+        
+                        match monsters.iter().find(|monster| {
+                            let mut ret = false;
+                            for ele in target {
+                                if ele.id == monster.id {
+                                    ret = true;
+                                    break;
+                                }
                             }
-                        }
-                        ret
-                    }) {
-                        Some(monster) => {
-                            eprintln!("target {} of hero {} is still alive", monster.id, hero.id);
-
-                            match monster.near_base {
-                                1 => {
-                                    eprintln!("updating its position");
-                                    let mut_target = self.targets_map.get_mut(&hero.id).unwrap();
-                                    for ele in mut_target {
-                                        if ele.id == monster.id {
-                                            ele.x = monster.x;
-                                            ele.y = monster.y;
-                                        }    
+                            ret
+                        }) {
+                            Some(monster) => {
+                                eprintln!("target {} of hero {} is still alive", monster.id, hero.id);
+        
+                                match monster.near_base {
+                                    1 => {
+                                        eprintln!("updating its position");
+                                        let mut_target = self.targets_map.get_mut(&hero.id).unwrap();
+                                        for ele in mut_target {
+                                            if ele.id == monster.id {
+                                                ele.x = monster.x;
+                                                ele.y = monster.y;
+                                            }
+                                        }
                                     }
-                                }
-                                _ => {
-                                    eprintln!("monster {} is no longer a threat", monster.id);
-                                    self.targets_map.insert(hero.id, Vec::new());
-                                }
-                            };
-                        }
-                        None => {
-                            eprintln!("target of hero {} is not found ! dead? ", hero.id);
-                            self.targets_map.insert(hero.id, Vec::new());
+                                    _ => {
+                                        eprintln!("monster {} is no longer a threat", monster.id);
+                                        self.targets_map.insert(hero.id, Vec::new());
+                                    }
+                                };
+                            }
+                            None => {
+                                eprintln!("target of hero {} is not found ! dead? ", hero.id);
+                                self.targets_map.insert(hero.id, Vec::new());
+                            }
                         }
                     }
                 }
+            }
         });
     }
 
+    pub fn MoveWitcher(&mut self, hero: &Entity,monsters: &Vec<Entity>, enemies: &Vec<Entity>, ret: &mut Vec<String>) {
+        let (mut option1_point, mut option2_point) = ((-1, -1), (-1, -1));
+        
+        match self.init_params.base_x {
+            0 => {
+                option1_point = (14600, 6000);
+                option2_point = (9500, 4000);
+            }
+            _ => {
+                option1_point = (4400, 2000);
+                option2_point = (8800, 4300);
+            }
+        }
+        let mut done = false;
+        for ele in monsters {
+            let d = Utils::distance((hero.x, hero.y), (ele.x, ele.y));
+            if d < 1280.0 && self.players_mana[0] >= 10 {
+                match self.init_params.base_x {
+                    0 => ret.push(format!("SPELL WIND {} {}", 17630, 9000)),
+                    _ => ret.push(format!("SPELL WIND {} {}", 0, 0)),
+                }
+                done = true;
+                break;
+            }
+        }
+
+        if done == false{
+            if self.witcher_target.0 == -1 {
+                self.witcher_target = option2_point;
+            }
+            let d1 = Utils::distance((hero.x, hero.y), option1_point);
+            let d2 = Utils::distance((hero.x, hero.y), option2_point);
+            if d1 < 100. {
+                ret.push(format!("MOVE {} {}", option2_point.0, option2_point.1));
+                self.witcher_target = option2_point;
+            }
+            else if d2 < 100.{
+                ret.push(format!("MOVE {} {}", option1_point.0, option1_point.1));
+                self.witcher_target = option1_point;
+            }
+            else{
+                ret.push(format!("MOVE {} {}", self.witcher_target.0, self.witcher_target.1));
+            }
+        }
+    }
+    pub fn MoveDefense(&mut self, i: i32, hero: &Entity, monsters: &Vec<Entity>, enemies: &Vec<Entity>, ret: &mut Vec<String>) {
+
+        if !self.targets_map.contains_key(&hero.id) || self.targets_map[&hero.id].is_empty() {
+            let mut targets = Vec::new();
+            let distances_to_monsters = self.GetDistanceToMonsters(hero, &monsters);
+            for _ in 0..3 {
+                let e = distances_to_monsters.iter().next();
+                if let Some(value) = e {
+                    targets.push(value.1.clone());
+                }
+            }
+            self.targets_map.insert(hero.id, targets);
+        }
+
+        let targets = self.targets_map.get(&hero.id).unwrap();
+        if targets.len() > 0 {
+            if targets.len() > 1 {
+                let monster1 = targets[0];
+                let monster2 = targets[1];
+                let d1 = Utils::distance((hero.x, hero.y), (monster1.x, monster1.y));
+                let d2 = Utils::distance((hero.x, hero.y), (monster2.x, monster2.y));
+                let dist_to_base = Utils::distance(
+                    (self.init_params.base_x, self.init_params.base_y),
+                    (monster2.x, monster2.y),
+                );
+                if dist_to_base < 1000.0
+                    && d1 < 1280.
+                    && d2 < 1280.
+                    && self.players_mana[0] >= 10
+                {
+                    ret.push(format!("SPELL WIND {} {}", 17630 / 2, 9000 / 2));
+                } else {
+                    ret.push(format!("MOVE {} {}", monster1.x, monster1.y));
+                }
+            } else {
+                ret.push(format!("MOVE {} {}", targets[0].x, targets[0].y));
+            }
+        } else {
+            let enemies = self.GetDistanceToEnemies(hero, &enemies);
+            if enemies.len() > 0 {
+                if Utils::distance((hero.x, hero.y), (enemies[0].1.x, enemies[0].1.y)) <= 1280.
+                    && self.players_mana[0] >= 10
+                {
+                    let (mut new_x, mut new_y) = (0, 0);
+                    match self.init_params.base_x {
+                        0 => {
+                            new_x = 17630;
+                            new_y = 9000;
+                        }
+                        _ => {}
+                    }
+
+                    let s = format!("SPELL WIND {} {}", new_x, new_y);
+                    ret.push(s);
+                } else {
+                    //ret.push(format!("MOVE {} {}", enemies[0].1.x, enemies[0].1.y));
+                    match self.init_params.base_x {
+                        0 => {
+                            match i {
+                                1 => {
+                                    ret.push(format!("MOVE {} {}", 2300, 300));
+                                },
+                                2 => {
+                                    ret.push(format!("MOVE {} {}", 1500, 2500));
+                                },
+                                _ => {},
+                            }
+                        }
+                        _ => {
+                            match i {
+                                1 => {
+                                    ret.push(format!("MOVE {} {}", 16700, 6500));
+                                },
+                                2 => {
+                                    ret.push(format!("MOVE {} {}", 15000, 7500));
+                                },
+                                _ => {},
+                            }
+                        }
+                    }
+                }
+            } else {
+                match self.init_params.base_x {
+                    0 => {
+                        match i {
+                            1 => {
+                                ret.push(format!("MOVE {} {}", 2300, 300));
+                            },
+                            2 => {
+                                ret.push(format!("MOVE {} {}", 1500, 2500));
+                            },
+                            _ => {},
+                        }
+                    }
+                    _ => {
+                        match i {
+                            1 => {
+                                ret.push(format!("MOVE {} {}", 16700, 6500));
+                            },
+                            2 => {
+                                ret.push(format!("MOVE {} {}", 15000, 7500));
+                            },
+                            _ => {},
+                        }
+                    }
+                }
+            }
+        }
+    }
     pub fn GetActions(&mut self) -> Vec<String> {
         let [me, enemies, monsters] = self.split();
 
@@ -146,43 +331,14 @@ impl Game {
         self.UpdateTargets(&me, &monsters);
 
         let mut ret: Vec<String> = Vec::new();
-        me.iter().for_each(|hero| {
-            
-            if !self.targets_map.contains_key(&hero.id) || self.targets_map[&hero.id].is_empty() {
-
-                let mut targets = Vec::new();
-                let distances_to_monsters = self.GetDistance(hero, &monsters);
-                for i in 0..2 {
-                    let e = distances_to_monsters.iter().next();
-                    if let Some(value) = e {
-                        targets.push(value.1.clone());
-                    }
-                }
-                self.targets_map.insert(hero.id, targets.clone());
-            }
-
-            let targets = self.targets_map.get(&hero.id).unwrap();
-            if targets.len() > 0 {
-                if targets.len() > 1 
-                {
-                    let monster1 = targets[0];
-                    let monster2 = targets[1];
-                    let d1 = Utils::distance((hero.x, hero.y), (monster1.x, monster1.y));
-                    let d2 = Utils::distance((hero.x, hero.y), (monster2.x, monster2.y));
-                    let dist_to_base =Utils::distance((self.init_params.base_x, self.init_params.base_y), (monster2.x, monster2.y));
-                    if dist_to_base < 1000.0 && d1 < 1280. && d2 < 1280. && self.players_mana[0] >= 10
-                    {
-                        let s = format!("SPELL WIND {} {}", 17630 / 2, 9000 / 2);
-                        ret.push(s);
-                    } else {
-                        ret.push(format!("MOVE {} {}", monster1.x, monster1.y));    
-                    }
-                } 
-                else {
-                    ret.push(format!("MOVE {} {}", targets[0].x, targets[0].y));
-                }
-            } else {
-                ret.push("WAIT".to_owned());
+        me.iter().enumerate().for_each(|(i, hero)| {
+            match i {
+                0 => {
+                    self.MoveWitcher(hero, &monsters, &enemies, &mut ret);
+                },
+                _ => {
+                   self.MoveDefense(i as i32, hero, &monsters, &enemies, &mut ret);
+                },
             }
         });
         ret
