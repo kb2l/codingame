@@ -27,6 +27,8 @@ struct Entity {
 struct InitParams {
     base_x: i32,
     base_y: i32,
+    ebase_x: i32,
+    ebase_y: i32,
     heroes_per_player: i32,
 }
 
@@ -35,7 +37,7 @@ struct Game {
     entities: Vec<Entity>,
     players_health: [i32; 2],
     players_mana: [i32; 2],
-    targets_map: HashMap<i32, Option<Entity>>,
+    targets_map: HashMap<i32, Vec<Entity>>,
 }
 
 struct Utils {}
@@ -71,66 +73,114 @@ impl Game {
         [me, enemy, monsters]
     }
 
-    pub fn GetDistance(&self, entity: &Entity, other: &Vec<Entity>) -> Vec<(Entity, f64)> {
+    pub fn DistanceBwtEntities(&self, entity1: &Entity, entity2: &Entity) -> f64 {
+        Utils::distance((entity1.x, entity1.y), (entity2.x, entity2.y))
+    }
+
+    pub fn GetDistance(&self, entity: &Entity, other: &Vec<Entity>) -> Vec<(f64, Entity)> {
         let mut ret = Vec::new();
         other.iter().for_each(|o| {
             if o.near_base == 1 {
                 let distance = Utils::distance((entity.x, entity.y), (o.x, o.y));
-                ret.push((*o, distance));
+                ret.push((distance, *o));
             }
         });
+        ret.sort_by(|a, b| { a.0.partial_cmp(&b.0).unwrap() });
         ret
     }
 
     // pub fn IsTargetAlive(&self, target: &Entity, group: &Vec<Entity>) -> Option<&Entity> {
-        
+
     // }
 
     pub fn UpdateTargets(&mut self, myheres: &Vec<Entity>, monsters: &Vec<Entity>) {
+
         myheres.iter().for_each(|hero| {
             if self.targets_map.contains_key(&hero.id) {
-                if let Some(target) = self.targets_map[&hero.id] {
-                    match monsters.iter().find(|e| target.id == e.id) {
+                    
+                    let target = self.targets_map.get(&hero.id).unwrap();
+
+                    match monsters.iter().find(|monster| {
+                        let mut ret = false;
+                        for ele in target {
+                            if ele.id == monster.id {
+                                ret = true;
+                                break;
+                            }
+                        }
+                        ret
+                    }) {
                         Some(monster) => {
                             eprintln!("target {} of hero {} is still alive", monster.id, hero.id);
-                            eprintln!("updating its position");
-                            self.targets_map.insert(hero.id, Some(*monster));
+
+                            match monster.near_base {
+                                1 => {
+                                    eprintln!("updating its position");
+                                    let mut_target = self.targets_map.get_mut(&hero.id).unwrap();
+                                    for ele in mut_target {
+                                        if ele.id == monster.id {
+                                            ele.x = monster.x;
+                                            ele.y = monster.y;
+                                        }    
+                                    }
+                                }
+                                _ => {
+                                    eprintln!("monster {} is no longer a threat", monster.id);
+                                    self.targets_map.insert(hero.id, Vec::new());
+                                }
+                            };
                         }
                         None => {
                             eprintln!("target of hero {} is not found ! dead? ", hero.id);
-                            self.targets_map.insert(hero.id, None);
+                            self.targets_map.insert(hero.id, Vec::new());
                         }
                     }
                 }
-            }
         });
     }
 
     pub fn GetActions(&mut self) -> Vec<String> {
-        let mut ret: Vec<String> = Vec::new();
         let [me, enemies, monsters] = self.split();
 
         ////
         self.UpdateTargets(&me, &monsters);
-        
-        me.iter().for_each(|hero| {
-            if !self.targets_map.contains_key(&hero.id) || self.targets_map[&hero.id] == None {
-                let distances_to_monsters = self.GetDistance(hero, &monsters);
-                let mut min = std::f64::MAX;
-                let mut target = None;
-                distances_to_monsters.iter().for_each(|(e, dist)| {
-                    if min > *dist {
-                        min = *dist;
-                        target = Some(e);
-                    }
-                });
-                self.targets_map.insert(hero.id, target.copied());
-            }
-        });
 
-        self.targets_map.iter().for_each(|(k, v)|{
-            if let Some(target) = self.targets_map[&k] {
-                ret.push(format!("MOVE {} {}", target.x, target.y));
+        let mut ret: Vec<String> = Vec::new();
+        me.iter().for_each(|hero| {
+            
+            if !self.targets_map.contains_key(&hero.id) || self.targets_map[&hero.id].is_empty() {
+
+                let mut targets = Vec::new();
+                let distances_to_monsters = self.GetDistance(hero, &monsters);
+                for i in 0..2 {
+                    let e = distances_to_monsters.iter().next();
+                    if let Some(value) = e {
+                        targets.push(value.1.clone());
+                    }
+                }
+                self.targets_map.insert(hero.id, targets.clone());
+            }
+
+            let targets = self.targets_map.get(&hero.id).unwrap();
+            if targets.len() > 0 {
+                if targets.len() > 1 
+                {
+                    let monster1 = targets[0];
+                    let monster2 = targets[1];
+                    let d1 = Utils::distance((hero.x, hero.y), (monster1.x, monster1.y));
+                    let d2 = Utils::distance((hero.x, hero.y), (monster2.x, monster2.y));
+                    let dist_to_base =Utils::distance((self.init_params.base_x, self.init_params.base_y), (monster2.x, monster2.y));
+                    if dist_to_base < 1000.0 && d1 < 1280. && d2 < 1280. && self.players_mana[0] >= 10
+                    {
+                        let s = format!("SPELL WIND {} {}", 17630 / 2, 9000 / 2);
+                        ret.push(s);
+                    } else {
+                        ret.push(format!("MOVE {} {}", monster1.x, monster1.y));    
+                    }
+                } 
+                else {
+                    ret.push(format!("MOVE {} {}", targets[0].x, targets[0].y));
+                }
             } else {
                 ret.push("WAIT".to_owned());
             }
@@ -149,17 +199,20 @@ fn main() {
     let inputs = input_line.split(" ").collect::<Vec<_>>();
     let base_x = parse_input!(inputs[0], i32); // The corner of the map representing your base
     let base_y = parse_input!(inputs[1], i32);
+    eprintln!("I am located at base {}{}", base_x, base_y);
     let mut input_line = String::new();
     io::stdin().read_line(&mut input_line).unwrap();
     let heroes_per_player = parse_input!(input_line, i32); // Always 3
 
-    let initParams = InitParams {
+    let init_params = InitParams {
         base_x,
         base_y,
+        ebase_x: 17630 - base_x,
+        ebase_y: 9000 - base_y,
         heroes_per_player,
     };
 
-    let mut game = Game::new(initParams);
+    let mut game = Game::new(init_params);
 
     // game loop
     loop {
