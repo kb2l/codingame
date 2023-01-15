@@ -119,101 +119,130 @@ impl Game {
 
     // }
 
+    pub fn WitcherToEnemiesStategy(&self, hero: &Entity, enemies: &Vec<Entity>) -> Option<String> {
+        let mut ret = None;
+        let mut v_dist_hero_enemy = Vec::new();
+        for enemy in enemies {
+            v_dist_hero_enemy.push(Utils::distance((hero.x, hero.y), (enemy.x, enemy.y)));
+        }
+
+        let hero_dist_to_enemy_base;
+        match self.init_params.base_x {
+            0 => {
+                hero_dist_to_enemy_base =
+                    Utils::distance((hero.x, hero.y), (17630, 9000));
+            }
+            _ => {
+                hero_dist_to_enemy_base = Utils::distance((hero.x, hero.y), (0, 0));
+            }
+        }
+        ret
+    }
+
+    pub fn GetEnemyBaseLocation(&self) -> (i32, i32) {
+        match self.init_params.base_x {
+            0 => (17630, 9000),
+            _ => (0, 0),
+        }
+    }
+
+    pub fn WitcherToMonstersStrategy(&self, hero: &Entity, monsters: &Vec<Entity>) -> Option<String>{
+
+        let mut ret = None;
+        
+        let mut max_score_wind = 0.;
+        let mut max_score_control = 0.;
+        let enemy_base_location = self.GetEnemyBaseLocation();
+        let mut pos_closed_monster_to_enemy = (-1, -1);
+        let mut min_pos_to_enemy_base = std::f64::MAX;
+        let mut mosnter_id_to_be_controller = -1;
+        for monster in monsters {
+
+            let dist_monster_enemy_base = Utils::distance((monster.x, monster.y), (enemy_base_location.0, enemy_base_location.1));
+            if dist_monster_enemy_base < min_pos_to_enemy_base {
+                min_pos_to_enemy_base = dist_monster_enemy_base;
+                pos_closed_monster_to_enemy = (monster.x, monster.y);
+            }
+
+            let dist_hero_monster = Utils::distance((monster.x, monster.y), (hero.x, hero.y));
+
+            match dist_monster_enemy_base < 3000.0 {
+                true => {
+                    if self.players_mana[0] >= 30 &&  dist_hero_monster < 1280.0 {
+                        let score_wind = 1./dist_monster_enemy_base;
+                        if max_score_wind < score_wind {
+                            max_score_wind = score_wind;
+                        }
+                    }
+                },
+                false => {
+                    if self.players_mana[0] >= 30 && dist_hero_monster < 2200.0 && monster.threat_for != 2{
+                        let score_control = 1./dist_monster_enemy_base;
+                        if max_score_control < score_control {
+                            max_score_control = score_control;
+                            mosnter_id_to_be_controller = monster.id;
+                        }
+                    }
+                }
+            }
+        }
+
+        if max_score_wind == 0. && max_score_control == 0. {
+            if pos_closed_monster_to_enemy.0 == -1  {
+                match self.init_params.base_x {
+                    0 => {
+                        ret = Some(format!("MOVE {} {}", 11600, 4000));
+                    }
+                    _ => {
+                        ret = Some(format!("MOVE {} {}", 5600, 4000));
+                    }
+                }
+            }
+            else {
+                ret = Some(format!("MOVE {} {}", pos_closed_monster_to_enemy.0, pos_closed_monster_to_enemy.1));
+            }
+        }
+        else {
+            if max_score_wind >= max_score_control {
+                ret = Some(format!("SPELL WIND {} {}", enemy_base_location.0, enemy_base_location.1))
+            }
+            else{
+                ret = Some(format!("SPELL CONTROL {} {} {}", mosnter_id_to_be_controller, enemy_base_location.0, enemy_base_location.1))
+            }
+        }
+        ret
+    }
+
     pub fn MoveWitcher(
         &mut self,
         hero: &Entity,
         monsters: &Vec<Entity>,
         enemies: &Vec<Entity>,
-        ret: &mut Vec<String>,
-    ) {
-        let (mut option1_point, mut option2_point) = ((-1, -1), (-1, -1));
-        match self.init_params.base_x {
-            0 => {
-                option1_point = (14600, 6000);
-                option2_point = (9500, 4000);
-            }
-            _ => {
-                option1_point = (4400, 2000);
-                option2_point = (8800, 4300);
-            }
+    ) -> String {
+        
+        let action = self.WitcherToMonstersStrategy(hero, monsters);
+        
+        if action.is_some() {
+            action.unwrap()
         }
-        let d = Utils::distance((hero.x, hero.y), option1_point);
-        if d < 5000. {
-            self.witcher_reached_pos = true;
-        } else {
-            self.witcher_reached_pos = false;
-        }
-        let mut done = false;
-        for monster in monsters {
-            if self.players_mana[0] >= 50 {
-                let d = Utils::distance((hero.x, hero.y), (monster.x, monster.y));
-                let mut dist_to_enemy_base ;
-                match self.init_params.base_x {
-                    0 => dist_to_enemy_base = Utils::distance((monster.x, monster.y), (17630, 9000)),
-                    _ => dist_to_enemy_base = Utils::distance((monster.x, monster.y), (0, 0)),
-                }
-                // if dist_to_enemy_base < 2000.0 && monster.shield_life == 0 && monster.threat_for == 2 {
-                //     eprintln!("SPELL SHIELD !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-                //     ret.push(format!("SPELL SHIELD {}",  monster.id));    
-                //     break;
-                // }
-                // else 
-                if d < 1280.0 && monster.is_controlled != 1 && monster.threat_for == 2 {
-                    match self.init_params.base_x {
-                        0 => ret.push(format!("SPELL WIND {} {}", 17630, 9000)),
-                        _ => ret.push(format!("SPELL WIND {} {}", 0, 0)),
-                    }
-                    done = true;
-                    break;
-                } else if d < 2200. && monster.is_controlled != 1 && monster.threat_for != 2 {
-                    match self.init_params.base_x {
-                        0 => ret.push(format!("SPELL CONTROL {} {} {}", monster.id, 17630, 9000)),
-                        _ => ret.push(format!("SPELL CONTROL {} {} {}", monster.id, 0, 0)),
-                    }
-                    done = true;
-                    break;
-                }
-            }
-        }
-
-        if done == false {
-            match self.witcher_reached_pos {
-                true => {
-                    let mut min = std::f64::MIN;
-                    let mut e = (-1, -1);
-                    eprintln!("monsters size {}", monsters.len());
-                    for m in monsters {
-                        let d = Utils::distance((hero.x, hero.y), (m.x, m.y));
-                        eprintln!("distance to monster {} {}", m.id, d);
-                        if m.threat_for != 1 && min < d {
-                            min = d;
-                            e = (m.x, m.y);
-                        }
-                    }
-                    if e.0 != -1 {
-                        eprintln!("Found a monster !!!");
-                        ret.push(format!("MOVE {} {}", e.0, e.1));
-                    } else {
-                        eprintln!("couldn't find any mosnter !!!!!!!!!!!!!!");
-                        ret.push(format!("MOVE {} {}", option1_point.0, option1_point.1));
-                    }
-                }
-                false => {
-                    ret.push(format!("MOVE {} {}", option1_point.0, option1_point.1));
-                }
-            }
+        else{
+            String::from("WAIT")
         }
     }
+
     pub fn MoveDefense(
         &mut self,
         i: i32,
         hero: &Entity,
         monsters: &Vec<Entity>,
         enemies: &Vec<Entity>,
-        ret: &mut Vec<String>,
-    ) {
+    ) -> String {
+        let mut ret = String::new();
         let mut targets = Vec::new();
-        let distances_to_monsters = self.GetDistanceToMonsters((self.init_params.base_x, self.init_params.base_y), &monsters);
+        let distances_to_monsters = self.GetDistanceToMonsters(
+            (self.init_params.base_x, self.init_params.base_y),
+            &monsters,
+        );
         for _ in 0..3 {
             let e = distances_to_monsters.iter().next();
             if let Some(value) = e {
@@ -221,7 +250,18 @@ impl Game {
             }
         }
 
-        if targets.len() > 0 {
+        let enemies = self.GetDistanceToEnemies(hero, &enemies);
+        if enemies.len() > 0
+            && Utils::distance((hero.x, hero.y), (enemies[0].1.x, enemies[0].1.y)) <= 2200.
+            && self.players_mana[0] >= 50
+            && targets.len() > 0
+        {
+            match self.init_params.base_x {
+                0 => ret = format!("SPELL CONTROL {} {} {}", enemies[0].1.id, 17630, 9000),
+                _ => ret = format!("SPELL CONTROL {} {} {}", enemies[0].1.id, 0, 0),
+            }
+        } else if targets.len() > 0 {
+            // deal with monsterss
             let monster1 = targets[0];
             let d1 = Utils::distance((hero.x, hero.y), (monster1.x, monster1.y));
             let dist_to_base = Utils::distance(
@@ -230,88 +270,50 @@ impl Game {
             );
             if dist_to_base < 1000.0 && self.players_mana[0] >= 10 {
                 if d1 < 1280.0 {
-                    ret.push(format!("SPELL WIND {} {}", 17630 / 2, 9000 / 2));
+                    ret = format!("SPELL WIND {} {}", 17630 / 2, 9000 / 2);
                 } else {
-                    ret.push(format!("MOVE {} {}", monster1.x, monster1.y));
-                }
-            } 
-            else {
-                ret.push(format!("MOVE {} {}", monster1.x, monster1.y));
-            }
-        } else {
-            let enemies = self.GetDistanceToEnemies(hero, &enemies);
-            if enemies.len() > 0 {
-                if Utils::distance((hero.x, hero.y), (enemies[0].1.x, enemies[0].1.y)) <= 1280.
-                    && self.players_mana[0] >= 10
-                {
-                    let (mut new_x, mut new_y) = (0, 0);
-                    match self.init_params.base_x {
-                        0 => {
-                            new_x = 17630;
-                            new_y = 9000;
-                        }
-                        _ => {}
-                    }
-
-                    let s = format!("SPELL WIND {} {}", new_x, new_y);
-                    ret.push(s);
-                } else {
-                    //ret.push(format!("MOVE {} {}", enemies[0].1.x, enemies[0].1.y));
-                    match self.init_params.base_x {
-                        0 => match i {
-                            1 => {
-                                ret.push(format!("MOVE {} {}", 2300, 300));
-                            }
-                            2 => {
-                                ret.push(format!("MOVE {} {}", 1500, 2500));
-                            }
-                            _ => {}
-                        },
-                        _ => match i {
-                            1 => {
-                                ret.push(format!("MOVE {} {}", 16700, 6500));
-                            }
-                            2 => {
-                                ret.push(format!("MOVE {} {}", 15000, 7500));
-                            }
-                            _ => {}
-                        },
-                    }
+                    ret = format!("MOVE {} {}", monster1.x, monster1.y);
                 }
             } else {
-                match self.init_params.base_x {
-                    0 => match i {
-                        1 => {
-                            ret.push(format!("MOVE {} {}", 2300, 300));
-                        }
-                        2 => {
-                            ret.push(format!("MOVE {} {}", 1500, 2500));
-                        }
-                        _ => {}
-                    },
-                    _ => match i {
-                        1 => {
-                            ret.push(format!("MOVE {} {}", 16700, 6500));
-                        }
-                        2 => {
-                            ret.push(format!("MOVE {} {}", 15000, 7500));
-                        }
-                        _ => {}
-                    },
-                }
+                ret = format!("MOVE {} {}", monster1.x, monster1.y);
+            }
+        } else {
+            match self.init_params.base_x {
+                0 => match i {
+                    1 => {
+                        ret = format!("MOVE {} {}", 2300, 300);
+                    }
+                    2 => {
+                        ret = format!("MOVE {} {}", 1500, 2500);
+                    }
+                    _ => {}
+                },
+                _ => match i {
+                    1 => {
+                        ret = format!("MOVE {} {}", 16700, 6500);
+                    }
+                    2 => {
+                        ret = format!("MOVE {} {}", 15000, 7500);
+                    }
+                    _ => {}
+                },
             }
         }
+        ret
     }
+
     pub fn GetActions(&mut self) -> Vec<String> {
         let [me, enemies, monsters] = self.split();
 
         let mut ret: Vec<String> = Vec::new();
+        ret.resize(3, String::new());
+
         me.iter().enumerate().for_each(|(i, hero)| match i {
             0 => {
-                self.MoveWitcher(hero, &monsters, &enemies, &mut ret);
+                ret[i] = self.MoveWitcher(hero, &monsters, &enemies);
             }
             _ => {
-                self.MoveDefense(i as i32, hero, &monsters, &enemies, &mut ret);
+                ret[i] = self.MoveDefense(i as i32, hero, &monsters, &enemies);
             }
         });
         ret
