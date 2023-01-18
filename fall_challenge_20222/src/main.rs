@@ -25,9 +25,6 @@ struct Entity {
 struct InitParams {
     base_x: i32,
     base_y: i32,
-    ebase_x: i32,
-    ebase_y: i32,
-    heroes_per_player: i32,
 }
 
 struct Game {
@@ -35,8 +32,7 @@ struct Game {
     entities: Vec<Entity>,
     players_health: [i32; 2],
     players_mana: [i32; 2],
-    witcher_reached_pos: bool,
-    monsterIsTaken: i32,
+    monster_is_taken: i32,
 }
 
 struct Utils {}
@@ -54,8 +50,7 @@ impl Game {
             entities: Vec::new(),
             players_health: [0, 0],
             players_mana: [0, 0],
-            witcher_reached_pos: false,
-            monsterIsTaken : -1,
+            monster_is_taken: -1,
         }
     }
     pub fn split(&self) -> [Vec<Entity>; 3] {
@@ -73,11 +68,7 @@ impl Game {
         [me, enemy, monsters]
     }
 
-    pub fn DistanceBwtEntities(&self, entity1: &Entity, entity2: &Entity) -> f64 {
-        Utils::distance((entity1.x, entity1.y), (entity2.x, entity2.y))
-    }
-
-    pub fn GetDistanceToMonsters(
+    pub fn get_distance_to_monsters(
         &self,
         entity: (i32, i32),
         other: &Vec<Entity>,
@@ -89,7 +80,7 @@ impl Game {
                 (self.init_params.base_x, self.init_params.base_y),
                 (monster.x, monster.y),
             );
-            if dist_to_base < 8000. && monster.id != self.monsterIsTaken {
+            if dist_to_base < 8000. && monster.id != self.monster_is_taken {
                 let distance = Utils::distance((entity.0, entity.1), (monster.x, monster.y));
                 ret.push((distance, *monster));
             }
@@ -98,37 +89,20 @@ impl Game {
         ret
     }
 
-    pub fn GetDistanceToEnemies(&self, entity: &Entity, other: &Vec<Entity>) -> Vec<(f64, Entity)> {
-        let mut ret = Vec::new();
-
-        other.iter().for_each(|enemy| {
-            let dist_to_base = Utils::distance(
-                (self.init_params.base_x, self.init_params.base_y),
-                (enemy.x, enemy.y),
-            );
-            if dist_to_base < 7000. {
-                let distance = Utils::distance((entity.x, entity.y), (enemy.x, enemy.y));
-                ret.push((distance, *enemy));
-            }
-        });
-        ret.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-        ret
-    }
-
-    // pub fn IsTargetAlive(&self, target: &Entity, group: &Vec<Entity>) -> Option<&Entity> {
-
-    // }
-
-    pub fn GetEnemyBaseLocation(&self) -> (i32, i32) {
+    pub fn get_enemy_base_location(&self) -> (i32, i32) {
         match self.init_params.base_x {
             0 => (17630, 9000),
             _ => (0, 0),
         }
     }
 
-    pub fn WitcherToEnemiesStategy(&self, hero: &Entity, enemies: &Vec<Entity>) -> Option<String> {
+    pub fn witcher_to_enemies_stategy(
+        &self,
+        hero: &Entity,
+        enemies: &Vec<Entity>,
+    ) -> Option<String> {
         let mut ret = None;
-        let enemy_base_location = self.GetEnemyBaseLocation();
+        let enemy_base_location = self.get_enemy_base_location();
         let dist_hero_to_enemy_base = Utils::distance(
             (hero.x, hero.y),
             (enemy_base_location.0, enemy_base_location.1),
@@ -142,7 +116,7 @@ impl Game {
                 && dist_hero_to_enemy_base < 7000.
                 && self.players_mana[0] >= 50
             {
-                if hero.shield_life <= 1  {
+                if hero.shield_life <= 1 {
                     ret = Some(format!("SPELL SHIELD {}", hero.id));
                     break;
                 } else if enemy.is_controlled != 1 {
@@ -150,13 +124,11 @@ impl Game {
                         (enemy.x, enemy.y),
                         (enemy_base_location.0, enemy_base_location.1),
                     );
-                    //if (dist_enemy_enemy_base < 2000.){
                     let score = 1. / dist_enemy_enemy_base;
                     if score > max_control_score {
                         max_control_score = score;
                         enemy_to_be_controlled_id = enemy.id;
                     }
-                    //}
                 }
             }
         }
@@ -170,18 +142,16 @@ impl Game {
         ret
     }
 
-    fn MonsterTargetEnemy(&self, monster: &Entity,) -> bool {
+    fn monster_target_enemy(&self, monster: &Entity) -> bool {
         match self.init_params.base_x {
-            0 => monster.vx >0 && monster.vy > 0,
-            _ => monster.vx <0 && monster.vy < 0
+            0 => monster.vx > 0 && monster.vy > 0,
+            _ => monster.vx < 0 && monster.vy < 0,
         }
-        
     }
-    pub fn WitcherToMonstersStrategy(
+    pub fn witcher_to_monsters_strategy(
         &self,
         hero: &Entity,
         monsters: &Vec<Entity>,
-        enemies: &Vec<Entity>,
     ) -> Option<String> {
         let mut ret = None;
 
@@ -190,30 +160,18 @@ impl Game {
         let mut max_score_shield = 0.;
         let mut best_score_selected_monster = std::f64::MAX;
 
-        let enemy_base_location = self.GetEnemyBaseLocation();
+        let enemy_base_location = self.get_enemy_base_location();
         let mut pos_closed_monster_to_enemy = (-1, -1);
-        let mut min_pos_to_enemy_base = std::f64::MAX;
         let mut mosnter_id_to_be_controller = -1;
         let mut mosnter_id_to_be_shielded = -1;
         for monster in monsters {
-
             let dist_monster_enemy_base = Utils::distance(
                 (monster.x, monster.y),
                 (enemy_base_location.0, enemy_base_location.1),
             );
 
             let dist_monster_hero = Utils::distance((monster.x, monster.y), (hero.x, hero.y));
-
-            let mut score = dist_monster_enemy_base;
-
-            // if monster.is_controlled == 1 {
-            //     eprintln!("monster is already threat for 2");
-            //     score += 500.;
-            // }
-            // if monster.threat_for == 2 {
-            //     score += 500.;
-            // }
-
+            let score = dist_monster_enemy_base;
             eprintln!(
                 "monster id {} dist_monster_enemy_base {} , dist_monster_hero {}, score = {}",
                 monster.id, dist_monster_enemy_base, dist_monster_hero, score
@@ -223,44 +181,27 @@ impl Game {
                 best_score_selected_monster = score;
                 pos_closed_monster_to_enemy = (monster.x, monster.y);
             }
-         
-            // if dist_monster_enemy_base < min_pos_to_enemy_base {
-            //     min_pos_to_enemy_base = dist_monster_enemy_base;
-            //     pos_closed_monster_to_enemy = (monster.x, monster.y);
-            // }
-
-            
-            // let mut min_distance_to_enemy = std::f64::MAX;
-            // for e in enemies {
-            //     let d = Utils::distance((monster.x, monster.y), (e.x, e.y));
-            //     if min_distance_to_enemy > d {
-            //         min_distance_to_enemy = d;
-            //     }
-            // }
 
             let dist_hero_monster = Utils::distance((monster.x, monster.y), (hero.x, hero.y));
             match dist_monster_enemy_base < 8000.0 {
                 true => {
-                    if  dist_hero_monster < 1280.0 && self.players_mana[0] >= 50
-                            && monster.health >= 5
-                            && monster.shield_life == 0
-                           // && min_distance_to_enemy > 2200.
-                        {
-                            let score_wind = 1. / dist_monster_enemy_base;
-                            if max_score_wind < score_wind {
-                                max_score_wind = score_wind;
-                            }
+                    if dist_hero_monster < 1280.0
+                        && self.players_mana[0] >= 50
+                        && monster.health >= 5
+                        && monster.shield_life == 0
+                    {
+                        let score_wind = 1. / dist_monster_enemy_base;
+                        if max_score_wind < score_wind {
+                            max_score_wind = score_wind;
                         }
-                    else if dist_hero_monster < 2200. && dist_monster_enemy_base < 6000.{
+                    } else if dist_hero_monster < 2200. && dist_monster_enemy_base < 6000. {
                         if self.players_mana[0] >= 10
-                            && monster.shield_life == 0 && self.MonsterTargetEnemy(monster) && monster.health >= 10
+                            && monster.shield_life == 0
+                            && self.monster_target_enemy(monster)
+                            && monster.health >= 10
                         {
                             max_score_shield = 10000.;
-                            mosnter_id_to_be_shielded  = monster.id;
-                            // if max_score_shield < score_shield {
-                            //     max_score_shield = score_shield;
-                            //     mosnter_id_to_be_shielded = monster.id;
-                            // }
+                            mosnter_id_to_be_shielded = monster.id;
                         }
                     }
                 }
@@ -281,7 +222,10 @@ impl Game {
                 }
             }
         }
-        eprintln!("max_score_wind {} max_score_control {} max_score_shield {}", max_score_wind,max_score_control, max_score_shield);
+        eprintln!(
+            "max_score_wind {} max_score_control {} max_score_shield {}",
+            max_score_wind, max_score_control, max_score_shield
+        );
         if max_score_wind == 0. && max_score_control == 0. && max_score_shield == 0. {
             if pos_closed_monster_to_enemy.0 == -1 {
                 match self.init_params.base_x {
@@ -293,43 +237,48 @@ impl Game {
                     }
                 }
             } else {
-                let dist = Utils::distance(self.GetEnemyBaseLocation(), pos_closed_monster_to_enemy);
+                let dist =
+                    Utils::distance(self.get_enemy_base_location(), pos_closed_monster_to_enemy);
                 if dist < 8000. && dist > 4000. {
                     ret = Some(format!(
                         "MOVE {} {} {}",
-                        pos_closed_monster_to_enemy.0, pos_closed_monster_to_enemy.1, "moving to the closed monster I've found"
+                        pos_closed_monster_to_enemy.0,
+                        pos_closed_monster_to_enemy.1,
+                        "moving to the closed monster I've found"
                     ));
-                }
-                else{
+                } else {
                     match self.init_params.base_x {
                         0 => {
-                            ret = Some(format!("MOVE {} {} {}",13636, 6445, "moving to the closed monster I've found"));
-                        },
+                            ret = Some(format!(
+                                "MOVE {} {} {}",
+                                13636, 6445, "moving to the closed monster I've found"
+                            ));
+                        }
                         _ => {
-                            ret = Some(format!("MOVE {} {} {}",4000, 2500, "moving to the closed monster I've found"));
+                            ret = Some(format!(
+                                "MOVE {} {} {}",
+                                4000, 2500, "moving to the closed monster I've found"
+                            ));
                         }
                     }
-                    
                 }
             }
         } else {
             if max_score_shield == 10000. && mosnter_id_to_be_shielded != -1 {
                 ret = Some(format!("SPELL SHIELD {}", mosnter_id_to_be_shielded))
-            }
-            else{
-
+            } else {
                 if max_score_wind >= max_score_control {
-                        ret = Some(format!(
-                            "SPELL WIND {} {}",
-                            enemy_base_location.0, enemy_base_location.1
-                        ))
-                }
-                else 
-                {
+                    ret = Some(format!(
+                        "SPELL WIND {} {}",
+                        enemy_base_location.0, enemy_base_location.1
+                    ))
+                } else {
                     if max_score_control > max_score_shield {
                         ret = Some(format!(
                             "SPELL CONTROL {} {} {}",
-                            mosnter_id_to_be_controller, enemy_base_location.0, enemy_base_location.1
+                            mosnter_id_to_be_controller,
+                            enemy_base_location.0,
+                            enemy_base_location.1
                         ))
                     }
                 }
@@ -338,18 +287,17 @@ impl Game {
         ret
     }
 
-    pub fn MoveWitcher(
+    pub fn move_witcher(
         &mut self,
         hero: &Entity,
         monsters: &Vec<Entity>,
         enemies: &Vec<Entity>,
     ) -> String {
-
-        let action = self.WitcherToMonstersStrategy(hero, monsters, enemies);
+        let action = self.witcher_to_monsters_strategy(hero, monsters);
         if action.is_some() {
             action.unwrap()
         } else {
-            let action = self.WitcherToEnemiesStategy(hero, enemies);
+            let action = self.witcher_to_enemies_stategy(hero, enemies);
             if action.is_none() {
                 String::from("WAIT")
             } else {
@@ -357,7 +305,8 @@ impl Game {
             }
         }
     }
-    fn MoveDefenseToInitPos(&self, i: i32, )->String{
+
+    fn move_defense_to_init_pos(&self, i: i32) -> String {
         let ret;
         match self.init_params.base_x {
             0 => match i {
@@ -367,7 +316,9 @@ impl Game {
                 2 => {
                     ret = format!("MOVE {} {}", 5359, 1529);
                 }
-                _ => {panic!("")}
+                _ => {
+                    panic!("")
+                }
             },
             _ => match i {
                 1 => {
@@ -376,22 +327,18 @@ impl Game {
                 2 => {
                     ret = format!("MOVE {} {}", 12709, 6584);
                 }
-                _ => {panic!("")}
+                _ => {
+                    panic!("")
+                }
             },
         }
         ret
     }
 
-    pub fn MoveDefense(
-        &mut self,
-        i: i32,
-        hero: &Entity,
-        monsters: &Vec<Entity>,
-        enemies: &Vec<Entity>,
-    ) -> String {
-        let mut ret = String::new();
+    pub fn move_defense(&mut self, i: i32, hero: &Entity, monsters: &Vec<Entity>) -> String {
+        let ret;
         let mut targets = Vec::new();
-        let distances_to_monsters = self.GetDistanceToMonsters(
+        let distances_to_monsters = self.get_distance_to_monsters(
             (self.init_params.base_x, self.init_params.base_y),
             &monsters,
         );
@@ -402,9 +349,7 @@ impl Game {
             }
         }
 
-        let enemies = self.GetDistanceToEnemies(hero, &enemies);
-         if targets.len() > 0 {
-            // deal with monsterss
+        if targets.len() > 0 {
             let monster1 = targets[0];
             let d1 = Utils::distance((hero.x, hero.y), (monster1.x, monster1.y));
             let dist_to_base = Utils::distance(
@@ -414,7 +359,7 @@ impl Game {
             if dist_to_base < 2000.0 && self.players_mana[0] >= 10 {
                 if d1 < 1280.0 && monster1.shield_life == 0 {
                     ret = format!("SPELL WIND {} {}", 17630 / 2, 9000 / 2);
-                    self.monsterIsTaken = monster1.id;
+                    self.monster_is_taken = monster1.id;
                 } else {
                     ret = format!("MOVE {} {}", monster1.x, monster1.y);
                 }
@@ -422,23 +367,23 @@ impl Game {
                 ret = format!("MOVE {} {}", monster1.x, monster1.y);
             }
         } else {
-                ret = self.MoveDefenseToInitPos(i);
+            ret = self.move_defense_to_init_pos(i);
         }
         ret
     }
 
-    pub fn GetActions(&mut self) -> Vec<String> {
+    pub fn get_actions(&mut self) -> Vec<String> {
         let [me, enemies, monsters] = self.split();
-        self.monsterIsTaken = -1;
+        self.monster_is_taken = -1;
         let mut ret: Vec<String> = Vec::new();
         ret.resize(3, String::new());
 
         me.iter().enumerate().for_each(|(i, hero)| match i {
             0 => {
-                ret[i] = self.MoveWitcher(hero, &monsters, &enemies);
+                ret[i] = self.move_witcher(hero, &monsters, &enemies);
             }
             _ => {
-                ret[i] = self.MoveDefense(i as i32, hero, &monsters, &enemies);
+                ret[i] = self.move_defense(i as i32, hero, &monsters);
             }
         });
         ret
@@ -458,15 +403,9 @@ fn main() {
     eprintln!("I am located at base {}{}", base_x, base_y);
     let mut input_line = String::new();
     io::stdin().read_line(&mut input_line).unwrap();
-    let heroes_per_player = parse_input!(input_line, i32); // Always 3
+    let _heroes_per_player = parse_input!(input_line, i32); // Always 3
 
-    let init_params = InitParams {
-        base_x,
-        base_y,
-        ebase_x: 17630 - base_x,
-        ebase_y: 9000 - base_y,
-        heroes_per_player,
-    };
+    let init_params = InitParams { base_x, base_y };
 
     let mut game = Game::new(init_params);
 
@@ -487,7 +426,7 @@ fn main() {
 
         game.entities.clear();
 
-        for i in 0..entity_count as usize {
+        for _i in 0..entity_count as usize {
             let mut input_line = String::new();
             io::stdin().read_line(&mut input_line).unwrap();
             let inputs = input_line.split(" ").collect::<Vec<_>>();
@@ -518,7 +457,7 @@ fn main() {
 
             game.entities.push(entity);
         }
-        game.GetActions().iter().for_each(|s| {
+        game.get_actions().iter().for_each(|s| {
             println!("{}", s);
         });
     }
