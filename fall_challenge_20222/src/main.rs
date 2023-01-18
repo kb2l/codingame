@@ -172,11 +172,6 @@ impl Game {
 
             let dist_monster_hero = Utils::distance((monster.x, monster.y), (hero.x, hero.y));
             let score = dist_monster_enemy_base;
-            eprintln!(
-                "monster id {} dist_monster_enemy_base {} , dist_monster_hero {}, score = {}",
-                monster.id, dist_monster_enemy_base, dist_monster_hero, score
-            );
-
             if score < best_score_selected_monster && monster.shield_life == 0 {
                 best_score_selected_monster = score;
                 pos_closed_monster_to_enemy = (monster.x, monster.y);
@@ -222,10 +217,6 @@ impl Game {
                 }
             }
         }
-        eprintln!(
-            "max_score_wind {} max_score_control {} max_score_shield {}",
-            max_score_wind, max_score_control, max_score_shield
-        );
         if max_score_wind == 0. && max_score_control == 0. && max_score_shield == 0. {
             if pos_closed_monster_to_enemy.0 == -1 {
                 match self.init_params.base_x {
@@ -400,7 +391,6 @@ fn main() {
     let inputs = input_line.split(" ").collect::<Vec<_>>();
     let base_x = parse_input!(inputs[0], i32); // The corner of the map representing your base
     let base_y = parse_input!(inputs[1], i32);
-    eprintln!("I am located at base {}{}", base_x, base_y);
     let mut input_line = String::new();
     io::stdin().read_line(&mut input_line).unwrap();
     let _heroes_per_player = parse_input!(input_line, i32); // Always 3
