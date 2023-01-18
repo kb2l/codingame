@@ -154,23 +154,23 @@ impl Game {
         monsters: &Vec<Entity>,
     ) -> Option<String> {
         let mut ret = None;
-
         let mut max_score_wind = 0.;
         let mut max_score_control = 0.;
         let mut max_score_shield = 0.;
         let mut best_score_selected_monster = std::f64::MAX;
-
-        let enemy_base_location = self.get_enemy_base_location();
         let mut pos_closed_monster_to_enemy = (-1, -1);
         let mut mosnter_id_to_be_controller = -1;
         let mut mosnter_id_to_be_shielded = -1;
+
+        let enemy_base_location = self.get_enemy_base_location();
+
         for monster in monsters {
+
             let dist_monster_enemy_base = Utils::distance(
                 (monster.x, monster.y),
                 (enemy_base_location.0, enemy_base_location.1),
             );
 
-            let dist_monster_hero = Utils::distance((monster.x, monster.y), (hero.x, hero.y));
             let score = dist_monster_enemy_base;
             if score < best_score_selected_monster && monster.shield_life == 0 {
                 best_score_selected_monster = score;
@@ -217,7 +217,9 @@ impl Game {
                 }
             }
         }
+
         if max_score_wind == 0. && max_score_control == 0. && max_score_shield == 0. {
+
             if pos_closed_monster_to_enemy.0 == -1 {
                 match self.init_params.base_x {
                     0 => {
@@ -231,8 +233,7 @@ impl Game {
                 let dist =
                     Utils::distance(self.get_enemy_base_location(), pos_closed_monster_to_enemy);
                 if dist < 8000. && dist > 4000. {
-                    ret = Some(format!(
-                        "MOVE {} {} {}",
+                    ret = Some(format!("MOVE {} {} {}",
                         pos_closed_monster_to_enemy.0,
                         pos_closed_monster_to_enemy.1,
                         "moving to the closed monster I've found"
@@ -240,16 +241,10 @@ impl Game {
                 } else {
                     match self.init_params.base_x {
                         0 => {
-                            ret = Some(format!(
-                                "MOVE {} {} {}",
-                                13636, 6445, "moving to the closed monster I've found"
-                            ));
+                            ret = Some(format!("MOVE {} {}",13636, 6445,));
                         }
                         _ => {
-                            ret = Some(format!(
-                                "MOVE {} {} {}",
-                                4000, 2500, "moving to the closed monster I've found"
-                            ));
+                            ret = Some(format!("MOVE {} {}",4000, 2500,));
                         }
                     }
                 }
@@ -297,6 +292,56 @@ impl Game {
         }
     }
 
+    pub fn get_list_of_close_monsters(&self, monsters: &Vec<Entity>) -> Vec<Entity>{
+        let distances_to_monsters = self.get_distance_to_monsters(
+            (self.init_params.base_x, self.init_params.base_y),
+            monsters,
+        );
+
+        let mut targets = Vec::new();
+        for _ in 0..3 {
+            let e = distances_to_monsters.iter().next();
+            if let Some(value) = e {
+                targets.push(value.1.clone());
+            }
+        }
+        targets
+    }
+
+    pub fn move_defense(&mut self, i: i32, hero: &Entity, monsters: &Vec<Entity>) -> String {
+        let mut ret = self.move_defense_to_init_pos(i);
+        let targets = self.get_list_of_close_monsters(monsters);
+        if targets.len() > 0 {
+
+            let monster = targets[0];
+            
+            let dist_monster_to_base = Utils::distance((self.init_params.base_x, self.init_params.base_y),(monster.x, monster.y),);
+
+            match dist_monster_to_base < 2000.0 && self.players_mana[0] >= 10 {
+
+                true => {
+
+                    let dist_hero_monster = Utils::distance((hero.x, hero.y), (monster.x, monster.y));
+
+                    match dist_hero_monster < 1280.0 && monster.shield_life == 0 {
+                        true => {
+                            ret = format!("SPELL WIND {} {}", 17630 / 2, 9000 / 2);
+                            self.monster_is_taken = monster.id;
+                        },
+                        false => {
+                            ret = format!("MOVE {} {}", monster.x, monster.y);
+                        }
+                    }
+                },
+
+                false => {
+                    ret = format!("MOVE {} {}", monster.x, monster.y)
+                }, 
+            }
+        }
+        ret
+    }
+    
     fn move_defense_to_init_pos(&self, i: i32) -> String {
         let ret;
         match self.init_params.base_x {
@@ -322,43 +367,6 @@ impl Game {
                     panic!("")
                 }
             },
-        }
-        ret
-    }
-
-    pub fn move_defense(&mut self, i: i32, hero: &Entity, monsters: &Vec<Entity>) -> String {
-        let ret;
-        let mut targets = Vec::new();
-        let distances_to_monsters = self.get_distance_to_monsters(
-            (self.init_params.base_x, self.init_params.base_y),
-            &monsters,
-        );
-        for _ in 0..3 {
-            let e = distances_to_monsters.iter().next();
-            if let Some(value) = e {
-                targets.push(value.1.clone());
-            }
-        }
-
-        if targets.len() > 0 {
-            let monster1 = targets[0];
-            let d1 = Utils::distance((hero.x, hero.y), (monster1.x, monster1.y));
-            let dist_to_base = Utils::distance(
-                (self.init_params.base_x, self.init_params.base_y),
-                (monster1.x, monster1.y),
-            );
-            if dist_to_base < 2000.0 && self.players_mana[0] >= 10 {
-                if d1 < 1280.0 && monster1.shield_life == 0 {
-                    ret = format!("SPELL WIND {} {}", 17630 / 2, 9000 / 2);
-                    self.monster_is_taken = monster1.id;
-                } else {
-                    ret = format!("MOVE {} {}", monster1.x, monster1.y);
-                }
-            } else {
-                ret = format!("MOVE {} {}", monster1.x, monster1.y);
-            }
-        } else {
-            ret = self.move_defense_to_init_pos(i);
         }
         ret
     }
